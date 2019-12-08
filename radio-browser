@@ -1,0 +1,79 @@
+#!/usr/bin/env sh
+
+# Just Another Radio Browser (https://www.radio-browser.info)
+# dependecies: curl, jq, fzf
+
+trap_exeptions() {
+    return 0
+}
+trap trap_exeptions HUP INT TERM
+
+RADIO_SEARCH_PROMPT='RadioBrowser> '
+RADIO_SEARCH_LIMIT='5000'
+RADIO_SEARCH_SORTBY='votes'
+
+RADIO_BROWSER_URL='https://www.radio-browser.info/webservice'
+
+RADIO_DATA_FORMAT=( 'json' 'xml' 'm3u' 'pls' 'xspf' 'ttl' )
+RADIO_DATA_LISTS=( 'countrycodes' 'codecs' 'states' 'languages' 'tags' )
+RADIO_DATA_STATION_FILTERS=( 'bycountrycodeexact' 'bycodec' 'bystate' 'bylanguage' 'bytag' )
+
+fetch_data() {
+    curl "$1" 2>/dev/null
+}
+
+retry() {
+    while true; do
+        TRY=`$@`
+        [ "$TRY" = '' ] || break
+    done
+    echo $TRY
+}
+
+menu_lists() {
+    echo "${RADIO_DATA_LISTS[@]}" | tr ' ' '\n' | fzf --prompt "${RADIO_SEARCH_PROMPT}bylists> "
+}
+
+lists_search() {
+    fetch_data "$RADIO_BROWSER_URL/${RADIO_DATA_FORMAT[0]}/$1?order=$RADIO_SEARCH_SORTBY" | jq -r '.[].name' | fzf --prompt "${RADIO_SEARCH_PROMPT}$1> "
+}
+
+global_search() {
+    echo "WARNING: global search is limited to the $RADIO_SEARCH_LIMIT most upvoted stations!" > /dev/stderr
+    fetch_data "$RADIO_BROWSER_URL/${RADIO_DATA_FORMAT[0]}/stations?limit=$RADIO_SEARCH_LIMIT\&order=$RADIO_SEARCH_SORTBY" | jq -r '.[].name' | fzf --prompt "${RADIO_SEARCH_PROMPT}global> "
+}
+
+get_station() {
+    LIST_INDEX=$(echo ${RADIO_DATA_LISTS[@]/$1//} | cut -d/ -f1 | wc -w | tr -d ' ')
+    BYLIST=${RADIO_DATA_STATION_FILTERS[$LIST_INDEX]}
+    fetch_data "$RADIO_BROWSER_URL/${RADIO_DATA_FORMAT[0]}/stations/$BYLIST/$(echo "\"$2\"" | jq -r '@uri')?order=$RADIO_SEARCH_SORTBY" | jq -r '.[].name' | fzf --prompt "${RADIO_SEARCH_PROMPT}$BYLIST=$2> "
+}
+
+get_url() {
+    fetch_data "$RADIO_BROWSER_URL/${RADIO_DATA_FORMAT[0]}/stations/search?name=$(echo "\"$1\"" | jq -r '@uri')" | jq -r '.[].url'
+}
+
+play_station() {
+    echo "Listening to $1"
+    get_url "$1" | mpv --really-quiet --no-video --playlist=/dev/stdin
+}
+
+main () {
+    echo "Just Another Radio Browser"
+    case "$(echo 'global search;search by categories' | tr ';' '\n' | fzf --prompt "${RADIO_SEARCH_PROMPT}menu> ")" in
+        global*)
+            play_station "$(retry 'global_search')"
+            return 0
+            ;;
+        *categories)
+            LISTS=$(retry 'menu_lists')
+            LIST_QUERY=$(retry 'lists_search' "$LISTS")
+            play_station "$(retry 'get_station' "$LISTS" "$LIST_QUERY")"
+            return 0
+            ;;
+        *)
+            echo "Not a valid entry, please retry!"
+            ;;
+    esac
+}
+main
