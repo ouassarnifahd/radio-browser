@@ -12,7 +12,7 @@ Simple radio browser powered by https://radio-browser.info
 
 ## Usage
 
-![search-type](images/search-type.png)
+![search-type](images/search.png)
 
 ![categories](images/categories.png)
 
