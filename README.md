@@ -1,6 +1,6 @@
 # Just Another Radio Browser
 
-Simple radio browser powered by https://radio-browser.info
+Simple radio browser powered by https://www.radio-browser.info
 
 ## Install
 
